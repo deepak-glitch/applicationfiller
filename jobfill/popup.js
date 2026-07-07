@@ -145,15 +145,7 @@
 
   // --- Load / save ----------------------------------------------------------
 
-  chrome.storage.local.get(['profile', 'settings'], function (res) {
-    var profile = res.profile || {};
-    Object.keys(inputs).forEach(function (key) {
-      if (profile[key] != null) inputs[key].value = profile[key];
-    });
-    var settings = res.settings || {};
-    document.getElementById('showFab').checked = settings.showFab !== false;
-    refreshMeters();
-  });
+  var savedAnswers = {};
 
   var saveTimer = null;
   function onEdit() {
@@ -181,24 +173,103 @@
     });
   }
 
+  // --- Saved answers tab -------------------------------------------------------
+
+  var answersList = document.getElementById('answersList');
+  var answersEmpty = document.getElementById('answersEmpty');
+  var answersBadge = document.getElementById('answersBadge');
+  var clearAnswersBtn = document.getElementById('clearAnswersBtn');
+
+  function persistAnswers() {
+    chrome.storage.local.set({ savedAnswers: savedAnswers });
+  }
+
+  function renderAnswers() {
+    answersList.textContent = '';
+    var keys = Object.keys(savedAnswers).sort();
+    answersEmpty.hidden = keys.length > 0;
+    clearAnswersBtn.hidden = keys.length === 0;
+    answersBadge.hidden = keys.length === 0;
+    answersBadge.textContent = String(keys.length);
+
+    keys.forEach(function (q) {
+      var card = document.createElement('div');
+      card.className = 'answer';
+
+      var head = document.createElement('div');
+      head.className = 'answer__head';
+      var qEl = document.createElement('div');
+      qEl.className = 'answer__q';
+      qEl.textContent = q;
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'answer__del';
+      del.title = 'Forget this answer';
+      del.textContent = '✕';
+      del.addEventListener('click', function () {
+        delete savedAnswers[q];
+        persistAnswers();
+        renderAnswers();
+      });
+      head.appendChild(qEl);
+      head.appendChild(del);
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = savedAnswers[q];
+      input.addEventListener('change', function () {
+        var v = input.value.trim();
+        if (v) {
+          savedAnswers[q] = v;
+        } else {
+          delete savedAnswers[q];
+        }
+        persistAnswers();
+        if (!v) renderAnswers();
+      });
+
+      card.appendChild(head);
+      card.appendChild(input);
+      answersList.appendChild(card);
+    });
+  }
+
+  clearAnswersBtn.addEventListener('click', function () {
+    if (clearAnswersBtn.dataset.armed !== '1') {
+      clearAnswersBtn.dataset.armed = '1';
+      clearAnswersBtn.textContent = 'Click again to forget everything';
+      setTimeout(function () {
+        clearAnswersBtn.dataset.armed = '';
+        clearAnswersBtn.textContent = 'Clear all answers';
+      }, 3000);
+      return;
+    }
+    clearAnswersBtn.dataset.armed = '';
+    clearAnswersBtn.textContent = 'Clear all answers';
+    savedAnswers = {};
+    persistAnswers();
+    renderAnswers();
+  });
+
   // --- Tabs ------------------------------------------------------------------
 
-  var tabProfile = document.getElementById('tabProfile');
-  var tabSettings = document.getElementById('tabSettings');
-  var panelProfile = document.getElementById('panelProfile');
-  var panelSettings = document.getElementById('panelSettings');
+  var TABS = [
+    { btn: document.getElementById('tabProfile'), panel: document.getElementById('panelProfile'), name: 'profile' },
+    { btn: document.getElementById('tabAnswers'), panel: document.getElementById('panelAnswers'), name: 'answers' },
+    { btn: document.getElementById('tabSettings'), panel: document.getElementById('panelSettings'), name: 'settings' },
+  ];
 
   function selectTab(which) {
-    var profile = which === 'profile';
-    tabProfile.classList.toggle('tabs__tab--active', profile);
-    tabSettings.classList.toggle('tabs__tab--active', !profile);
-    tabProfile.setAttribute('aria-selected', String(profile));
-    tabSettings.setAttribute('aria-selected', String(!profile));
-    panelProfile.hidden = !profile;
-    panelSettings.hidden = profile;
+    TABS.forEach(function (t) {
+      var active = t.name === which;
+      t.btn.classList.toggle('tabs__tab--active', active);
+      t.btn.setAttribute('aria-selected', String(active));
+      t.panel.hidden = !active;
+    });
   }
-  tabProfile.addEventListener('click', function () { selectTab('profile'); });
-  tabSettings.addEventListener('click', function () { selectTab('settings'); });
+  TABS.forEach(function (t) {
+    t.btn.addEventListener('click', function () { selectTab(t.name); });
+  });
 
   // --- Settings ---------------------------------------------------------------
 
@@ -266,7 +337,7 @@
   // --- Export / Import ------------------------------------------------------
 
   document.getElementById('exportBtn').addEventListener('click', function () {
-    var data = JSON.stringify(currentProfile(), null, 2);
+    var data = JSON.stringify({ profile: currentProfile(), savedAnswers: savedAnswers }, null, 2);
     var blob = new Blob([data], { type: 'application/json' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
@@ -290,9 +361,16 @@
       try {
         var data = JSON.parse(reader.result);
         if (!data || typeof data !== 'object') throw new Error('bad');
+        // New format: { profile, savedAnswers }. Old format: flat profile map.
+        var profile = (data.profile && typeof data.profile === 'object') ? data.profile : data;
         Object.keys(inputs).forEach(function (key) {
-          inputs[key].value = data[key] != null ? data[key] : '';
+          inputs[key].value = profile[key] != null ? profile[key] : '';
         });
+        if (data.savedAnswers && typeof data.savedAnswers === 'object') {
+          savedAnswers = data.savedAnswers;
+          persistAnswers();
+          renderAnswers();
+        }
         saveNow();
         refreshMeters();
         selectTab('profile');
@@ -303,5 +381,19 @@
       importFile.value = '';
     };
     reader.readAsText(file);
+  });
+
+  // --- Initial load (last, so every element/function above is ready) ---------
+
+  chrome.storage.local.get(['profile', 'settings', 'savedAnswers'], function (res) {
+    var profile = res.profile || {};
+    Object.keys(inputs).forEach(function (key) {
+      if (profile[key] != null) inputs[key].value = profile[key];
+    });
+    var settings = res.settings || {};
+    document.getElementById('showFab').checked = settings.showFab !== false;
+    savedAnswers = res.savedAnswers || {};
+    refreshMeters();
+    renderAnswers();
   });
 })();

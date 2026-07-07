@@ -16,6 +16,14 @@
   var FIELDS = (window.FIELD_LIST || (typeof FIELD_LIST !== 'undefined' ? FIELD_LIST : []));
   var MATCH_THRESHOLD = 1.0; // minimum score for a control<->field match
 
+  // Saved answers for unique questions: normalized question text -> answer.
+  // Loaded at startup, kept in sync via storage.onChanged, written (debounced)
+  // when the user answers an unmatched question by hand.
+  var savedAnswers = {};
+  // Elements JobFill itself wrote to — the capture listener ignores these so
+  // our own dispatched change events don't get recorded as user answers.
+  var filledByUs = new WeakSet();
+
   // ---------------------------------------------------------------------------
   // Text helpers
   // ---------------------------------------------------------------------------
@@ -162,6 +170,79 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Question keys (for saved answers)
+  //
+  // A "question key" is the normalized visible question text of a control —
+  // the exact-match key under which a hand-typed answer is remembered. Only
+  // human-facing sources qualify (labels, legends, aria, placeholder, nearby
+  // question text) — never name/id, which are site-specific.
+  // ---------------------------------------------------------------------------
+
+  var MIN_Q_LEN = 6;
+  var MAX_Q_LEN = 200;
+
+  function cleanQuestion(raw) {
+    var n = normalize(raw);
+    if (!n || n.length < MIN_Q_LEN || n.length > MAX_Q_LEN) return '';
+    if (!/[a-z]/.test(n)) return '';
+    return n;
+  }
+
+  function questionTextFor(el) {
+    var q;
+    var alb = el.getAttribute('aria-labelledby');
+    if (alb) {
+      var txt = alb.split(/\s+/).map(function (id) {
+        var ref = id && document.getElementById(id);
+        return ref ? ref.textContent : '';
+      }).join(' ');
+      q = cleanQuestion(txt);
+      if (q) return q;
+    }
+    if (el.id) {
+      var forLabel = document.querySelector('label[for="' + cssEscape(el.id) + '"]');
+      if (forLabel) { q = cleanQuestion(forLabel.textContent); if (q) return q; }
+    }
+    var wrap = el.closest('label');
+    if (wrap) { q = cleanQuestion(wrap.textContent); if (q) return q; }
+    var fs = el.closest('fieldset');
+    if (fs) {
+      var lg = fs.querySelector('legend');
+      if (lg) { q = cleanQuestion(lg.textContent); if (q) return q; }
+    }
+    q = cleanQuestion(el.getAttribute('aria-label')); if (q) return q;
+    q = cleanQuestion(el.getAttribute('placeholder')); if (q) return q;
+    q = cleanQuestion(nearestQuestion(el)); if (q) return q;
+    return '';
+  }
+
+  function questionTextForRadios(radios) {
+    var first = radios[0];
+    var q;
+    var fs = first.closest('fieldset');
+    if (fs) {
+      var lg = fs.querySelector('legend');
+      if (lg) { q = cleanQuestion(lg.textContent); if (q) return q; }
+    }
+    var rg = first.closest('[role="radiogroup"]');
+    if (rg) {
+      q = cleanQuestion(rg.getAttribute('aria-label'));
+      if (q) return q;
+      var lb = rg.getAttribute('aria-labelledby');
+      if (lb) {
+        var txt = lb.split(/\s+/).map(function (id) {
+          var ref = id && document.getElementById(id);
+          return ref ? ref.textContent : '';
+        }).join(' ');
+        q = cleanQuestion(txt);
+        if (q) return q;
+      }
+    }
+    q = cleanQuestion(nearestQuestion(first)); if (q) return q;
+    return '';
+  }
+
+  // ---------------------------------------------------------------------------
   // Scoring
   // ---------------------------------------------------------------------------
 
@@ -218,6 +299,7 @@
 
   function fillText(el, value) {
     if (el.value && el.value.trim() !== '') return false; // never clobber
+    filledByUs.add(el);
     el.focus();
     // Reset React's value tracker so it registers the change.
     if (el._valueTracker) el._valueTracker.setValue('');
@@ -253,6 +335,7 @@
       }
     }
     if (!match) return false;
+    filledByUs.add(sel);
     nativeSetValue(sel, match.value);
     fireInputEvents(sel);
     return true;
@@ -277,6 +360,7 @@
       }
     }
     if (!target) return false;
+    filledByUs.add(target);
     if (target.focus) target.focus();
     target.click();
     if (!target.checked) {
@@ -310,7 +394,7 @@
       var signals = labelSignals(el);
       var q = nearestQuestion(el);
       if (q) signals.push({ text: q, weight: 0.85 });
-      out.push({ el: el, signals: signals });
+      out.push({ el: el, signals: signals, qkey: questionTextFor(el) });
     });
     return out;
   }
@@ -372,8 +456,11 @@
     boxes.forEach(function (box) {
       chain = chain.then(function (count) {
         var match = bestField(box.signals);
-        if (!match.field || match.score < MATCH_THRESHOLD) return count;
-        var value = profile[match.field.key];
+        var value = null;
+        if (match.field && match.score >= MATCH_THRESHOLD) value = profile[match.field.key];
+        if ((value == null || value === '') && box.qkey && savedAnswers[box.qkey] != null) {
+          value = savedAnswers[box.qkey];
+        }
         if (value == null || value === '') return count;
         return fillCombobox(box.el, value).then(function (ok) {
           return count + (ok ? 1 : 0);
@@ -415,19 +502,19 @@
           return;
         }
         if (!isFillable(el)) return;
-        out.push({ kind: 'text', el: el, signals: labelSignals(el) });
+        out.push({ kind: 'text', el: el, signals: labelSignals(el), qkey: questionTextFor(el) });
       } else if (tag === 'textarea') {
         if (!isFillable(el)) return;
-        out.push({ kind: 'text', el: el, signals: labelSignals(el) });
+        out.push({ kind: 'text', el: el, signals: labelSignals(el), qkey: questionTextFor(el) });
       } else if (tag === 'select') {
         if (!isFillable(el)) return;
-        out.push({ kind: 'select', el: el, signals: labelSignals(el) });
+        out.push({ kind: 'select', el: el, signals: labelSignals(el), qkey: questionTextFor(el) });
       }
     });
 
     Object.keys(radioGroups).forEach(function (name) {
       var radios = radioGroups[name];
-      out.push({ kind: 'radio', els: radios, signals: radioGroupSignals(radios) });
+      out.push({ kind: 'radio', els: radios, signals: radioGroupSignals(radios), qkey: questionTextForRadios(radios) });
     });
 
     return out;
@@ -463,9 +550,13 @@
     for (var i = 0; i < controls.length; i++) {
       var c = controls[i];
       var match = bestField(c.signals);
-      if (!match.field || match.score < MATCH_THRESHOLD) continue;
 
-      var value = profile[match.field.key];
+      // Profile fields first; fall back to a saved answer for this exact question.
+      var value = null;
+      if (match.field && match.score >= MATCH_THRESHOLD) value = profile[match.field.key];
+      if ((value == null || value === '') && c.qkey && savedAnswers[c.qkey] != null) {
+        value = savedAnswers[c.qkey];
+      }
       if (value == null || value === '') continue;
 
       var ok = false;
@@ -478,7 +569,8 @@
   }
 
   function runFill() {
-    chrome.storage.local.get('profile', function (res) {
+    chrome.storage.local.get(['profile', 'savedAnswers'], function (res) {
+      savedAnswers = res.savedAnswers || {};
       var profile = withDerived(res.profile || {});
       var syncCount = doFill(profile);
       // Async second pass: custom dropdowns (Workday / react-select style).
@@ -619,8 +711,87 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Answer capture — remember what the user types into unique questions
+  //
+  // A document-level change listener (capture phase, so it sees fields inside
+  // any widget). If the changed control does NOT match the profile schema but
+  // has a readable question, the answer is saved under that exact question
+  // text and refilled next time the same question appears. Clearing a field
+  // forgets its saved answer.
+  // ---------------------------------------------------------------------------
+
+  var persistTimer = null;
+  function persistAnswers() {
+    if (persistTimer) clearTimeout(persistTimer);
+    persistTimer = setTimeout(function () {
+      try { chrome.storage.local.set({ savedAnswers: savedAnswers }); } catch (e) { /* ignore */ }
+    }, 250);
+  }
+
+  var MAX_ANSWER_LEN = 1000;
+
+  function captureAnswer(el) {
+    if (!el || !el.tagName) return;
+    var tag = el.tagName.toLowerCase();
+    if (tag !== 'input' && tag !== 'textarea' && tag !== 'select') return;
+    var type = (el.type || 'text').toLowerCase();
+    if (tag === 'input' && SKIP_INPUT_TYPES.indexOf(type) !== -1) return;
+    if (type === 'search') return;
+    if (filledByUs.has(el)) return;
+
+    var qkey;
+    var answer;
+    if (type === 'radio') {
+      var radios = el.name
+        ? Array.prototype.slice.call(document.querySelectorAll('input[type=radio][name="' + cssEscape(el.name) + '"]'))
+        : [el];
+      if (bestField(radioGroupSignals(radios)).score >= MATCH_THRESHOLD) return; // profile question
+      qkey = questionTextForRadios(radios);
+      answer = String(optionLabel(el) || '').replace(/\s+/g, ' ').trim();
+    } else {
+      if (bestField(labelSignals(el)).score >= MATCH_THRESHOLD) return; // profile question
+      qkey = questionTextFor(el);
+      if (tag === 'select') {
+        var opt = el.options[el.selectedIndex];
+        answer = opt ? opt.text.trim() : '';
+        if (answer && looksLikePlaceholder(answer)) answer = '';
+      } else {
+        answer = el.value.trim();
+      }
+    }
+    if (!qkey) return;
+    if (answer && answer.length > MAX_ANSWER_LEN) return;
+
+    if (!answer) {
+      if (savedAnswers[qkey] != null) {
+        delete savedAnswers[qkey];
+        persistAnswers();
+      }
+      return;
+    }
+    if (savedAnswers[qkey] === answer) return;
+    savedAnswers[qkey] = answer;
+    persistAnswers();
+  }
+
+  document.addEventListener('change', function (e) {
+    try { captureAnswer(e.target); } catch (err) { /* never break the page */ }
+  }, true);
+
+  // ---------------------------------------------------------------------------
   // Wiring
   // ---------------------------------------------------------------------------
+
+  chrome.storage.local.get('savedAnswers', function (res) {
+    savedAnswers = (res && res.savedAnswers) || {};
+  });
+
+  // Keep every frame's copy in sync (answers can be edited in the popup too).
+  chrome.storage.onChanged.addListener(function (changes, area) {
+    if (area === 'local' && changes.savedAnswers) {
+      savedAnswers = changes.savedAnswers.newValue || {};
+    }
+  });
 
   chrome.runtime.onMessage.addListener(function (msg) {
     if (msg && msg.type === 'FILL') runFill();

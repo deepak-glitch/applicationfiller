@@ -26,8 +26,15 @@ Works in any Chromium browser — Chrome, Edge, Brave, Arc.
 3. It fills every field it recognizes. It only writes to **empty** fields, so
    it never clobbers anything you've already typed. Review before submitting.
 
+**Saved answers:** when you type an answer into a question JobFill doesn't
+know (e.g. "Why do you want to work here?"), it remembers it automatically —
+and fills it the next time the *exact same question* appears on any
+application. The **Answers** tab lists everything remembered; edit an answer
+inline, forget one with ✕, or clear them all. Clearing the field on the page
+also forgets its saved answer.
+
 The **Settings** tab has the floating-button toggle, **Export / Import**
-(JSON backup of your profile), and **Clear profile**.
+(JSON backup of your profile *and* saved answers), and **Clear profile**.
 
 ## How matching works
 
@@ -41,6 +48,12 @@ Custom (non-`<select>`) dropdowns — Workday's `aria-haspopup="listbox"`
 buttons, react-select-style comboboxes — are handled in a second async pass:
 JobFill clicks the widget open, waits for its `role="option"` list to render,
 and clicks the option whose text matches your answer, one dropdown at a time.
+
+Unique questions that don't match the schema fall back to your saved answers,
+keyed on the exact (normalized) question text. Answers are captured from a
+page-level `change` listener — only for fields that *don't* match the profile
+schema, never for passwords/files/checkboxes, and never from JobFill's own
+writes.
 
 If you enter only a **Full name**, JobFill still fills split First/Last fields
 (and vice-versa).

@@ -19,10 +19,17 @@ instruction).
   click → wait for `role="option"` → click-match pass.
 - `jobfill/background.js` — service worker; broadcasts FILL to all frames of a
   tab and aggregates per-frame filled counts for the popup.
-- `jobfill/popup.*` — profile editor (tabs: Profile / Settings, completeness
-  bar, collapsible groups, autosave, JSON export/import).
+- `jobfill/popup.*` — profile editor (tabs: Profile / Answers / Settings,
+  completeness bar, collapsible groups, autosave, JSON export/import).
+- Saved answers: `content.js` captures hand-typed answers to questions that
+  don't match the schema (document-level capture-phase `change` listener,
+  guarded by a `filledByUs` WeakSet so JobFill's own writes aren't recorded)
+  and refills them when the exact normalized question text reappears. Managed
+  in the popup's Answers tab.
 - Storage keys in `chrome.storage.local`: `profile` (flat key → value),
-  `settings` (`{ showFab }`), `buttonPos`.
+  `savedAnswers` (normalized question → answer), `settings` (`{ showFab }`),
+  `buttonPos`. Export format: `{ profile, savedAnswers }` (import also accepts
+  the old flat-profile format).
 
 ## Testing
 

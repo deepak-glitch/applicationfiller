@@ -26,11 +26,24 @@
 
   <nav class="tabs" role="tablist">
     <button id="tabProfile" class="tabs__tab tabs__tab--active" role="tab" aria-selected="true" type="button">Profile</button>
+    <button id="tabAnswers" class="tabs__tab" role="tab" aria-selected="false" type="button">Answers <span id="answersBadge" class="tabs__count" hidden></span></button>
     <button id="tabSettings" class="tabs__tab" role="tab" aria-selected="false" type="button">Settings</button>
   </nav>
 
   <section id="panelProfile" class="panel" role="tabpanel">
     <main id="form" class="form"><!-- built by popup.js from fields.js --></main>
+  </section>
+
+  <section id="panelAnswers" class="panel" role="tabpanel" hidden>
+    <div class="answers">
+      <p class="answers__intro">When you type an answer into a question JobFill doesn't know, it remembers it — and fills it automatically the next time the <em>exact same question</em> appears on any application.</p>
+      <div id="answersList"><!-- built by popup.js --></div>
+      <div id="answersEmpty" class="answers__empty" hidden>
+        <div class="answers__emptyicon">💬</div>
+        Nothing saved yet.<br>Answer a custom question on any application and it'll show up here.
+      </div>
+      <button id="clearAnswersBtn" class="btn btn--danger btn--block" type="button" hidden>Clear all answers</button>
+    </div>
   </section>
 
   <section id="panelSettings" class="panel" role="tabpanel" hidden>
