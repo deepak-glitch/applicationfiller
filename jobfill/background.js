@@ -20,14 +20,15 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
   if (msg.type === 'FILL_TAB' && typeof msg.tabId === 'number') {
     pending = { tabId: msg.tabId, total: 0, respond: sendResponse };
     chrome.tabs.sendMessage(msg.tabId, { type: 'FILL' });
-    // Frames fill synchronously and report within a few ms; wait a beat, then
-    // return the aggregated total to the popup.
+    // Text fields fill synchronously, but custom dropdowns (Workday-style
+    // comboboxes) fill asynchronously — give frames a couple of seconds to
+    // report, then return the aggregated total to the popup.
     setTimeout(function () {
       if (pending && pending.respond) {
         try { pending.respond({ count: pending.total }); } catch (e) { /* popup closed */ }
       }
       pending = null;
-    }, 400);
+    }, 2500);
     return true; // keep the message channel open for the async response
   }
 

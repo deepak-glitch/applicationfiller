@@ -1,9 +1,11 @@
 /*
- * JobFill popup — the profile editor.
+ * JobFill popup — profile editor + settings.
  *
- * Builds the form from the shared schema (fields.js), loads/saves the profile
- * to chrome.storage.local (autosave, debounced), and wires the Fill / Export /
- * Import buttons.
+ * Builds the Profile tab from the shared schema (fields.js): one collapsible
+ * card per group with a filled-count badge, paired rows for compact fields,
+ * and a completeness bar in the header. Autosaves (debounced) to
+ * chrome.storage.local. The Settings tab holds the floating-button toggle,
+ * Export/Import, and Clear.
  */
 (function () {
   'use strict';
@@ -12,75 +14,151 @@
   var formEl = document.getElementById('form');
   var saveState = document.getElementById('saveState');
   var fillResult = document.getElementById('fillResult');
+  var progressBar = document.getElementById('progressBar');
+  var progressText = document.getElementById('progressText');
 
-  var inputs = {}; // key -> element
+  // Fields rendered side by side (both keys must be in the same group).
+  var PAIRS = { firstName: 'lastName', city: 'state', zip: 'country' };
 
-  // --- Build the form -------------------------------------------------------
+  var inputs = {};       // key -> control element
+  var groupEls = [];     // { badge, keys }
 
-  GROUPS.forEach(function (group) {
-    var section = document.createElement('section');
-    section.className = 'group';
+  // --- Build the Profile tab -------------------------------------------------
 
-    var title = document.createElement('div');
-    title.className = 'group__title';
-    title.textContent = group.group;
-    section.appendChild(title);
+  GROUPS.forEach(function (group, gi) {
+    var details = document.createElement('details');
+    details.className = 'group';
+    if (gi === 0) details.open = true;
 
-    group.fields.forEach(function (field) {
-      var wrap = document.createElement('div');
-      wrap.className = 'field';
+    var summary = document.createElement('summary');
+    summary.innerHTML =
+      '<span class="group__icon"></span>' +
+      '<span class="group__name"></span>' +
+      '<span class="group__badge"></span>' +
+      '<span class="group__chev">▶</span>';
+    summary.querySelector('.group__icon').textContent = group.icon || '📄';
+    summary.querySelector('.group__name').textContent = group.group;
+    var badge = summary.querySelector('.group__badge');
+    details.appendChild(summary);
 
-      var label = document.createElement('label');
-      label.textContent = field.label;
-      label.setAttribute('for', 'jf_' + field.key);
-      wrap.appendChild(label);
+    var body = document.createElement('div');
+    body.className = 'group__body';
+    if (group.hint) {
+      var hint = document.createElement('p');
+      hint.className = 'group__hint';
+      hint.textContent = group.hint;
+      body.appendChild(hint);
+    }
 
-      var control;
-      if (field.type === 'choice') {
-        control = document.createElement('select');
-        var blank = document.createElement('option');
-        blank.value = '';
-        blank.textContent = '—';
-        control.appendChild(blank);
-        (field.choices || []).forEach(function (choice) {
-          var opt = document.createElement('option');
-          opt.value = choice;
-          opt.textContent = choice;
-          control.appendChild(opt);
-        });
+    var keys = [];
+    var skip = {};
+    group.fields.forEach(function (field, fi) {
+      if (skip[field.key]) return;
+      var partnerKey = PAIRS[field.key];
+      var partner = partnerKey && group.fields.find(function (f) { return f.key === partnerKey; });
+      if (partner) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.appendChild(buildField(field));
+        row.appendChild(buildField(partner));
+        skip[partnerKey] = true;
+        body.appendChild(row);
+        keys.push(field.key, partnerKey);
       } else {
-        control = document.createElement('input');
-        control.type = field.type === 'email' ? 'email'
-          : field.type === 'tel' ? 'tel'
-            : field.type === 'url' ? 'url' : 'text';
-        control.placeholder = field.label;
+        body.appendChild(buildField(field));
+        keys.push(field.key);
       }
-      control.id = 'jf_' + field.key;
-      control.dataset.key = field.key;
-      inputs[field.key] = control;
-
-      control.addEventListener('input', scheduleSave);
-      control.addEventListener('change', scheduleSave);
-
-      wrap.appendChild(control);
-      section.appendChild(wrap);
     });
 
-    formEl.appendChild(section);
+    details.appendChild(body);
+    formEl.appendChild(details);
+    groupEls.push({ badge: badge, keys: keys });
   });
+
+  function buildField(field) {
+    var wrap = document.createElement('div');
+    wrap.className = 'field';
+
+    var label = document.createElement('label');
+    label.textContent = field.label;
+    label.setAttribute('for', 'jf_' + field.key);
+    wrap.appendChild(label);
+
+    var control;
+    if (field.type === 'choice') {
+      control = document.createElement('select');
+      var blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = '— skip —';
+      control.appendChild(blank);
+      (field.choices || []).forEach(function (choice) {
+        var opt = document.createElement('option');
+        opt.value = choice;
+        opt.textContent = choice;
+        control.appendChild(opt);
+      });
+    } else {
+      control = document.createElement('input');
+      control.type = field.type === 'email' ? 'email'
+        : field.type === 'tel' ? 'tel'
+          : field.type === 'url' ? 'url' : 'text';
+      control.placeholder = field.label;
+    }
+    control.id = 'jf_' + field.key;
+    control.dataset.key = field.key;
+    inputs[field.key] = control;
+
+    control.addEventListener('input', onEdit);
+    control.addEventListener('change', onEdit);
+
+    wrap.appendChild(control);
+    return wrap;
+  }
+
+  // --- Completeness + badges ---------------------------------------------------
+
+  // Self-ID is optional by design, so it doesn't count against completeness.
+  var OPTIONAL_GROUPS = ['Self-identification'];
+
+  function refreshMeters() {
+    var total = 0;
+    var filled = 0;
+    GROUPS.forEach(function (group, gi) {
+      var gKeys = groupEls[gi].keys;
+      var gFilled = gKeys.filter(function (k) { return inputs[k].value.trim() !== ''; }).length;
+      var b = groupEls[gi].badge;
+      b.textContent = gFilled + '/' + gKeys.length;
+      b.className = 'group__badge' + (gFilled === gKeys.length ? ' group__badge--full' : '');
+      if (OPTIONAL_GROUPS.indexOf(group.group) === -1) {
+        total += gKeys.length;
+        filled += gFilled;
+      }
+      gKeys.forEach(function (k) {
+        var el = inputs[k];
+        if (el.tagName === 'SELECT') el.classList.toggle('has-value', el.value !== '');
+      });
+    });
+    var pct = total ? Math.round((filled / total) * 100) : 0;
+    progressBar.style.width = pct + '%';
+    progressText.textContent = pct + '%';
+  }
 
   // --- Load / save ----------------------------------------------------------
 
-  chrome.storage.local.get('profile', function (res) {
+  chrome.storage.local.get(['profile', 'settings'], function (res) {
     var profile = res.profile || {};
     Object.keys(inputs).forEach(function (key) {
       if (profile[key] != null) inputs[key].value = profile[key];
     });
+    var settings = res.settings || {};
+    document.getElementById('showFab').checked = settings.showFab !== false;
+    refreshMeters();
   });
 
   var saveTimer = null;
-  function scheduleSave() {
+  function onEdit() {
     saveState.textContent = 'Saving…';
+    refreshMeters();
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 300);
   }
@@ -103,27 +181,84 @@
     });
   }
 
+  // --- Tabs ------------------------------------------------------------------
+
+  var tabProfile = document.getElementById('tabProfile');
+  var tabSettings = document.getElementById('tabSettings');
+  var panelProfile = document.getElementById('panelProfile');
+  var panelSettings = document.getElementById('panelSettings');
+
+  function selectTab(which) {
+    var profile = which === 'profile';
+    tabProfile.classList.toggle('tabs__tab--active', profile);
+    tabSettings.classList.toggle('tabs__tab--active', !profile);
+    tabProfile.setAttribute('aria-selected', String(profile));
+    tabSettings.setAttribute('aria-selected', String(!profile));
+    panelProfile.hidden = !profile;
+    panelSettings.hidden = profile;
+  }
+  tabProfile.addEventListener('click', function () { selectTab('profile'); });
+  tabSettings.addEventListener('click', function () { selectTab('settings'); });
+
+  // --- Settings ---------------------------------------------------------------
+
+  document.getElementById('showFab').addEventListener('change', function (e) {
+    chrome.storage.local.get('settings', function (res) {
+      var settings = res.settings || {};
+      settings.showFab = e.target.checked;
+      chrome.storage.local.set({ settings: settings });
+    });
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', function (e) {
+    var btn = e.target;
+    if (btn.dataset.armed !== '1') {
+      btn.dataset.armed = '1';
+      btn.textContent = 'Click again to erase everything';
+      setTimeout(function () {
+        btn.dataset.armed = '';
+        btn.textContent = 'Clear profile';
+      }, 3000);
+      return;
+    }
+    btn.dataset.armed = '';
+    btn.textContent = 'Clear profile';
+    Object.keys(inputs).forEach(function (key) { inputs[key].value = ''; });
+    chrome.storage.local.set({ profile: {} }, refreshMeters);
+  });
+
   // --- Fill current page ----------------------------------------------------
 
-  document.getElementById('fillBtn').addEventListener('click', function () {
+  var fillBtn = document.getElementById('fillBtn');
+  var fillBtnText = document.getElementById('fillBtnText');
+  var boltEl = fillBtn.querySelector('.btn__bolt');
+
+  fillBtn.addEventListener('click', function () {
     fillResult.className = 'fillresult';
-    fillResult.textContent = 'Filling…';
+    fillResult.textContent = '';
+    fillBtn.disabled = true;
+    fillBtnText.textContent = 'Filling…';
+    boltEl.innerHTML = '<span class="spin"></span>';
     saveNow();
+
+    function done(text, ok) {
+      fillBtn.disabled = false;
+      fillBtnText.textContent = 'Fill current page';
+      boltEl.textContent = '⚡';
+      fillResult.className = 'fillresult' + (ok ? ' fillresult--ok' : '');
+      fillResult.textContent = text;
+    }
+
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       var tab = tabs && tabs[0];
-      if (!tab) { fillResult.textContent = 'No active tab.'; return; }
+      if (!tab) return done('No active tab.', false);
       chrome.runtime.sendMessage({ type: 'FILL_TAB', tabId: tab.id }, function (resp) {
         if (chrome.runtime.lastError) {
-          fillResult.textContent = 'Can’t run on this page. Open a job application and try again.';
-          return;
+          return done('Can’t run on this page — open a job application and try again.', false);
         }
         var n = resp && resp.count ? resp.count : 0;
-        if (n > 0) {
-          fillResult.className = 'fillresult fillresult--ok';
-          fillResult.textContent = 'Filled ' + n + ' field' + (n === 1 ? '' : 's') + '. Review before submitting.';
-        } else {
-          fillResult.textContent = 'No new fields matched on this page.';
-        }
+        if (n > 0) done('Filled ' + n + ' field' + (n === 1 ? '' : 's') + ' — review before submitting.', true);
+        else done('No new fields matched on this page.', false);
       });
     });
   });
@@ -159,11 +294,11 @@
           inputs[key].value = data[key] != null ? data[key] : '';
         });
         saveNow();
-        fillResult.className = 'fillresult fillresult--ok';
-        fillResult.textContent = 'Profile imported.';
+        refreshMeters();
+        selectTab('profile');
+        saveState.textContent = 'Imported ✓';
       } catch (e) {
-        fillResult.className = 'fillresult';
-        fillResult.textContent = 'That file isn’t a valid JobFill profile.';
+        saveState.textContent = 'Invalid file';
       }
       importFile.value = '';
     };

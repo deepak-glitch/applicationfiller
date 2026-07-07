@@ -17,15 +17,17 @@ Works in any Chromium browser — Chrome, Edge, Brave, Arc.
 
 ## Use
 
-1. Click the ⚡ icon → fill in your profile once. It autosaves as you type.
+1. Click the ⚡ icon → fill in your profile once on the **Profile** tab. It
+   autosaves as you type, and the header bar shows how complete your profile is.
 2. On a job application page, either:
    * click **Fill current page** in the popup, or
    * click the floating **⚡ Autofill** button (bottom-right of the page — drag
-     it anywhere).
+     it anywhere, or turn it off in Settings).
 3. It fills every field it recognizes. It only writes to **empty** fields, so
    it never clobbers anything you've already typed. Review before submitting.
 
-**Export / Import** buttons back up your profile to a JSON file.
+The **Settings** tab has the floating-button toggle, **Export / Import**
+(JSON backup of your profile), and **Clear profile**.
 
 ## How matching works
 
@@ -34,6 +36,11 @@ script reads each form field's label, `name`, `id`, `placeholder`, and
 `aria-label` (plus Workday's `data-automation-id`), normalizes them
 (camelCase / snake_case → words), and picks the best keyword match. Yes/No and
 self-ID questions are matched on radio-button and dropdown option text.
+
+Custom (non-`<select>`) dropdowns — Workday's `aria-haspopup="listbox"`
+buttons, react-select-style comboboxes — are handled in a second async pass:
+JobFill clicks the widget open, waits for its `role="option"` list to render,
+and clicks the option whose text matches your answer, one dropdown at a time.
 
 If you enter only a **Full name**, JobFill still fills split First/Last fields
 (and vice-versa).
@@ -56,9 +63,9 @@ If you enter only a **Full name**, JobFill still fills split First/Last fields
   browser; there's no server and no network call.
 * Some multi-step Workday flows load fields as you advance — click Autofill
   again on each step.
-* Native inputs, textareas, `<select>` dropdowns and radio groups are
-  supported. Fully custom JS dropdowns (some Workday/Ashby comboboxes) that
-  aren't real `<select>` elements may need a manual pick.
+* Native inputs, textareas, `<select>` dropdowns, radio groups, and custom
+  listbox comboboxes (Workday-style) are supported. An exotic widget that
+  exposes no `role="option"` items may still need a manual pick.
 
 ## Files
 

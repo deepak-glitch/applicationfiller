@@ -287,6 +287,103 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Custom comboboxes (Workday buttons, react-select, Ashby, etc.)
+  //
+  // These aren't real <select> elements — they open a floating listbox of
+  // [role=option] nodes on click. Filling one is async: click to open, poll
+  // for options to render, click the best text match. Boxes are processed
+  // strictly one at a time so only one dropdown is ever open.
+  // ---------------------------------------------------------------------------
+
+  function comboboxText(el) {
+    return (el.textContent || el.value || '').trim();
+  }
+
+  function collectComboboxes() {
+    var sel = 'button[aria-haspopup="listbox"], div[aria-haspopup="listbox"], ' +
+      '[role="combobox"]:not(input):not(select)';
+    var out = [];
+    document.querySelectorAll(sel).forEach(function (el) {
+      if (el.closest('.jobfill-fab')) return;
+      if (el.getAttribute('aria-disabled') === 'true') return;
+      if (!isFillable(el)) return;
+      var signals = labelSignals(el);
+      var q = nearestQuestion(el);
+      if (q) signals.push({ text: q, weight: 0.85 });
+      out.push({ el: el, signals: signals });
+    });
+    return out;
+  }
+
+  function waitForOptions(cb) {
+    var tries = 0;
+    var timer = setInterval(function () {
+      var opts = document.querySelectorAll('[role="option"], [role="listbox"] li');
+      if (opts.length) {
+        clearInterval(timer);
+        cb(Array.prototype.slice.call(opts));
+      } else if (++tries >= 10) {
+        clearInterval(timer);
+        cb(null);
+      }
+    }, 100);
+  }
+
+  function matchOption(options, value) {
+    var want = normalize(value);
+    for (var i = 0; i < options.length; i++) {
+      if (normalize(options[i].textContent) === want) return options[i];
+    }
+    for (var j = 0; j < options.length; j++) {
+      var ot = normalize(options[j].textContent);
+      if (!ot || looksLikePlaceholder(ot)) continue;
+      if (ot.indexOf(want) !== -1 || (want.length >= 3 && want.indexOf(ot) !== -1)) {
+        return options[j];
+      }
+    }
+    return null;
+  }
+
+  function closeDropdown(el) {
+    var esc = { key: 'Escape', code: 'Escape', keyCode: 27, bubbles: true };
+    el.dispatchEvent(new KeyboardEvent('keydown', esc));
+    el.dispatchEvent(new KeyboardEvent('keyup', esc));
+  }
+
+  function fillCombobox(el, value) {
+    return new Promise(function (resolve) {
+      var current = comboboxText(el);
+      if (current && !looksLikePlaceholder(current)) return resolve(false); // answered
+      el.click();
+      waitForOptions(function (options) {
+        if (!options) { closeDropdown(el); return resolve(false); }
+        var target = matchOption(options, value);
+        if (!target) { closeDropdown(el); return resolve(false); }
+        target.click();
+        // let the widget close/re-render before the next box opens
+        setTimeout(function () { resolve(true); }, 150);
+      });
+    });
+  }
+
+  function fillComboboxes(profile) {
+    var boxes = collectComboboxes();
+    var chain = Promise.resolve(0);
+    boxes.forEach(function (box) {
+      chain = chain.then(function (count) {
+        var match = bestField(box.signals);
+        if (!match.field || match.score < MATCH_THRESHOLD) return count;
+        var value = profile[match.field.key];
+        if (value == null || value === '') return count;
+        return fillCombobox(box.el, value).then(function (ok) {
+          return count + (ok ? 1 : 0);
+        });
+      });
+    });
+    return chain;
+  }
+
+  // ---------------------------------------------------------------------------
   // Control collection
   // ---------------------------------------------------------------------------
 
@@ -382,9 +479,14 @@
 
   function runFill() {
     chrome.storage.local.get('profile', function (res) {
-      var count = doFill(res.profile || {});
-      showToast(count);
-      try { chrome.runtime.sendMessage({ type: 'FRAME_RESULT', count: count }); } catch (e) { /* ignore */ }
+      var profile = withDerived(res.profile || {});
+      var syncCount = doFill(profile);
+      // Async second pass: custom dropdowns (Workday / react-select style).
+      fillComboboxes(profile).then(function (comboCount) {
+        var count = syncCount + comboCount;
+        showToast(count);
+        try { chrome.runtime.sendMessage({ type: 'FRAME_RESULT', count: count }); } catch (e) { /* ignore */ }
+      });
     });
   }
 
@@ -526,10 +628,14 @@
 
   var isTopFrame = window.top === window;
   if (isTopFrame) {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', watchForForm);
-    } else {
-      watchForForm();
-    }
+    chrome.storage.local.get('settings', function (res) {
+      var settings = (res && res.settings) || {};
+      if (settings.showFab === false) return; // user turned the button off
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', watchForForm);
+      } else {
+        watchForForm();
+      }
+    });
   }
 })();

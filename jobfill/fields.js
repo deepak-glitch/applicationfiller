@@ -16,7 +16,7 @@
  */
 var FIELD_GROUPS = [
   {
-    group: 'Personal',
+    group: 'Personal', icon: '👤',
     fields: [
       { key: 'firstName', label: 'First name', type: 'text',
         keywords: ['first name', 'given name', 'firstname', 'fname', 'first'] },
@@ -33,7 +33,7 @@ var FIELD_GROUPS = [
     ],
   },
   {
-    group: 'Address',
+    group: 'Address', icon: '📍',
     fields: [
       { key: 'address', label: 'Street address', type: 'text',
         keywords: ['street address', 'address line 1', 'addressline1', 'mailing address', 'address', 'street'] },
@@ -50,7 +50,7 @@ var FIELD_GROUPS = [
     ],
   },
   {
-    group: 'Links',
+    group: 'Links', icon: '🔗',
     fields: [
       { key: 'linkedin', label: 'LinkedIn URL', type: 'url',
         keywords: ['linkedin profile', 'linkedin url', 'linkedin', 'linked in'] },
@@ -63,7 +63,7 @@ var FIELD_GROUPS = [
     ],
   },
   {
-    group: 'Professional',
+    group: 'Professional', icon: '💼',
     fields: [
       { key: 'currentCompany', label: 'Current company', type: 'text',
         keywords: ['current company', 'current employer', 'employer', 'company'] },
@@ -78,7 +78,7 @@ var FIELD_GROUPS = [
     ],
   },
   {
-    group: 'Work authorization',
+    group: 'Work authorization', icon: '🛂',
     fields: [
       { key: 'workAuthorized', label: 'Authorized to work?', type: 'choice',
         choices: ['Yes', 'No'],
@@ -91,7 +91,8 @@ var FIELD_GROUPS = [
     ],
   },
   {
-    group: 'Self-identification (optional — leave blank to skip)',
+    group: 'Self-identification', icon: '📋',
+    hint: 'Optional — leave any of these blank and JobFill will skip them.',
     fields: [
       { key: 'gender', label: 'Gender', type: 'choice',
         choices: ['Male', 'Female', 'Non-binary', 'Decline to self-identify'],

@@ -8,30 +8,68 @@
 </head>
 <body>
   <header class="hdr">
-    <div class="hdr__brand">
-      <span class="hdr__bolt">⚡</span>
-      <div>
-        <div class="hdr__title">JobFill</div>
-        <div class="hdr__sub">Autofill any application</div>
+    <div class="hdr__top">
+      <div class="hdr__brand">
+        <span class="hdr__bolt">⚡</span>
+        <div>
+          <div class="hdr__title">JobFill</div>
+          <div class="hdr__sub">One-click job applications</div>
+        </div>
       </div>
+      <span id="saveState" class="savestate" aria-live="polite"></span>
     </div>
-    <span id="saveState" class="savestate" aria-live="polite"></span>
+    <div class="progress" title="Profile completeness">
+      <div class="progress__track"><div id="progressBar" class="progress__bar"></div></div>
+      <span id="progressText" class="progress__text">0%</span>
+    </div>
   </header>
 
-  <div class="actions">
-    <button id="fillBtn" class="btn btn--primary" type="button">Fill current page</button>
-    <div class="actions__row">
-      <button id="exportBtn" class="btn btn--ghost" type="button">Export</button>
-      <button id="importBtn" class="btn btn--ghost" type="button">Import</button>
-      <input id="importFile" type="file" accept="application/json,.json" hidden />
+  <nav class="tabs" role="tablist">
+    <button id="tabProfile" class="tabs__tab tabs__tab--active" role="tab" aria-selected="true" type="button">Profile</button>
+    <button id="tabSettings" class="tabs__tab" role="tab" aria-selected="false" type="button">Settings</button>
+  </nav>
+
+  <section id="panelProfile" class="panel" role="tabpanel">
+    <main id="form" class="form"><!-- built by popup.js from fields.js --></main>
+  </section>
+
+  <section id="panelSettings" class="panel" role="tabpanel" hidden>
+    <div class="settings">
+      <div class="card">
+        <div class="card__title">Behavior</div>
+        <label class="toggle">
+          <input type="checkbox" id="showFab" checked />
+          <span class="toggle__slider" aria-hidden="true"></span>
+          <span class="toggle__label">Show floating ⚡ button on pages</span>
+        </label>
+        <p class="hint">The button appears on pages that look like forms. Changes apply after the page is reloaded.</p>
+      </div>
+
+      <div class="card">
+        <div class="card__title">Backup</div>
+        <div class="btnrow">
+          <button id="exportBtn" class="btn btn--ghost" type="button">⬇ Export profile</button>
+          <button id="importBtn" class="btn btn--ghost" type="button">⬆ Import profile</button>
+          <input id="importFile" type="file" accept="application/json,.json" hidden />
+        </div>
+        <p class="hint">Your profile as a JSON file — move it between browsers or keep a backup.</p>
+      </div>
+
+      <div class="card card--danger">
+        <div class="card__title">Danger zone</div>
+        <button id="clearBtn" class="btn btn--danger" type="button">Clear profile</button>
+        <p class="hint">Erases every saved field from this browser. There is no undo (export first!).</p>
+      </div>
+
+      <p class="privacy">🔒 100% local — stored in <code>chrome.storage.local</code>. No server, no network calls, no analytics.</p>
     </div>
+  </section>
+
+  <footer class="actionbar">
+    <button id="fillBtn" class="btn btn--primary" type="button">
+      <span class="btn__bolt">⚡</span><span id="fillBtnText">Fill current page</span>
+    </button>
     <div id="fillResult" class="fillresult" aria-live="polite"></div>
-  </div>
-
-  <main id="form" class="form"><!-- fields injected by popup.js --></main>
-
-  <footer class="foot">
-    Saved locally in your browser. Nothing is uploaded.
   </footer>
 
   <script src="fields.js"></script>
