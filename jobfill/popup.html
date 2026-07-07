@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>JobFill</title>
+</head>
+<body>
+  <header class="hdr">
+    <div class="hdr__brand">
+      <span class="hdr__bolt">⚡</span>
+      <div>
+        <div class="hdr__title">JobFill</div>
+        <div class="hdr__sub">Autofill any application</div>
+      </div>
+    </div>
+    <span id="saveState" class="savestate" aria-live="polite"></span>
+  </header>
+
+  <div class="actions">
+    <button id="fillBtn" class="btn btn--primary" type="button">Fill current page</button>
+    <div class="actions__row">
+      <button id="exportBtn" class="btn btn--ghost" type="button">Export</button>
+      <button id="importBtn" class="btn btn--ghost" type="button">Import</button>
+      <input id="importFile" type="file" accept="application/json,.json" hidden />
+    </div>
+    <div id="fillResult" class="fillresult" aria-live="polite"></div>
+  </div>
+
+  <main id="form" class="form"><!-- fields injected by popup.js --></main>
+
+  <footer class="foot">
+    Saved locally in your browser. Nothing is uploaded.
+  </footer>
+
+  <script src="fields.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
