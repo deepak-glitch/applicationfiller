@@ -256,6 +256,7 @@
   var TABS = [
     { btn: document.getElementById('tabProfile'), panel: document.getElementById('panelProfile'), name: 'profile' },
     { btn: document.getElementById('tabAnswers'), panel: document.getElementById('panelAnswers'), name: 'answers' },
+    { btn: document.getElementById('tabAI'), panel: document.getElementById('panelAI'), name: 'ai' },
     { btn: document.getElementById('tabSettings'), panel: document.getElementById('panelSettings'), name: 'settings' },
   ];
 
@@ -269,6 +270,94 @@
   }
   TABS.forEach(function (t) {
     t.btn.addEventListener('click', function () { selectTab(t.name); });
+  });
+
+  // --- AI tab -------------------------------------------------------------------
+
+  var DEFAULT_MODELS = { claude: 'claude-opus-4-8', openai: 'gpt-4o-mini', gemini: 'gemini-2.5-flash' };
+
+  var aiSettings = {
+    enabled: true,
+    provider: 'claude',
+    keys: {},
+    models: Object.assign({}, DEFAULT_MODELS),
+    bio: '',
+  };
+
+  var aiEnabledEl = document.getElementById('aiEnabled');
+  var aiKeyEl = document.getElementById('aiKey');
+  var aiModelEl = document.getElementById('aiModel');
+  var aiBioEl = document.getElementById('aiBio');
+  var aiTestResult = document.getElementById('aiTestResult');
+  var segBtns = Array.prototype.slice.call(document.querySelectorAll('#providerSeg .seg__btn'));
+
+  var aiSaveTimer = null;
+  function saveAI() {
+    if (aiSaveTimer) clearTimeout(aiSaveTimer);
+    aiSaveTimer = setTimeout(function () {
+      chrome.storage.local.set({ aiSettings: aiSettings });
+    }, 250);
+  }
+
+  function renderAI() {
+    aiEnabledEl.checked = aiSettings.enabled !== false;
+    segBtns.forEach(function (b) {
+      b.classList.toggle('seg__btn--active', b.dataset.provider === aiSettings.provider);
+    });
+    aiKeyEl.value = aiSettings.keys[aiSettings.provider] || '';
+    aiModelEl.value = aiSettings.models[aiSettings.provider] || DEFAULT_MODELS[aiSettings.provider];
+    aiBioEl.value = aiSettings.bio || '';
+  }
+
+  segBtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      aiSettings.provider = b.dataset.provider;
+      aiTestResult.textContent = '';
+      renderAI();
+      saveAI();
+    });
+  });
+
+  aiEnabledEl.addEventListener('change', function () {
+    aiSettings.enabled = aiEnabledEl.checked;
+    saveAI();
+  });
+  aiKeyEl.addEventListener('input', function () {
+    aiSettings.keys[aiSettings.provider] = aiKeyEl.value.trim();
+    saveAI();
+  });
+  aiModelEl.addEventListener('input', function () {
+    aiSettings.models[aiSettings.provider] = aiModelEl.value.trim() || DEFAULT_MODELS[aiSettings.provider];
+    saveAI();
+  });
+  aiBioEl.addEventListener('input', function () {
+    aiSettings.bio = aiBioEl.value;
+    saveAI();
+  });
+
+  document.getElementById('showKey').addEventListener('click', function () {
+    aiKeyEl.type = aiKeyEl.type === 'password' ? 'text' : 'password';
+  });
+
+  document.getElementById('testAI').addEventListener('click', function () {
+    aiTestResult.className = 'fillresult';
+    aiTestResult.textContent = 'Testing…';
+    // Flush any pending debounced save first so the worker reads fresh settings.
+    if (aiSaveTimer) clearTimeout(aiSaveTimer);
+    chrome.storage.local.set({ aiSettings: aiSettings }, function () {
+      chrome.runtime.sendMessage({ type: 'AI_TEST' }, function (resp) {
+        if (chrome.runtime.lastError || !resp) {
+          aiTestResult.textContent = 'Could not reach the extension worker.';
+          return;
+        }
+        if (resp.ok) {
+          aiTestResult.className = 'fillresult fillresult--ok';
+          aiTestResult.textContent = '✓ Connected — key works.';
+        } else {
+          aiTestResult.textContent = '✗ ' + (resp.error || 'Failed');
+        }
+      });
+    });
   });
 
   // --- Settings ---------------------------------------------------------------
@@ -385,7 +474,7 @@
 
   // --- Initial load (last, so every element/function above is ready) ---------
 
-  chrome.storage.local.get(['profile', 'settings', 'savedAnswers'], function (res) {
+  chrome.storage.local.get(['profile', 'settings', 'savedAnswers', 'aiSettings'], function (res) {
     var profile = res.profile || {};
     Object.keys(inputs).forEach(function (key) {
       if (profile[key] != null) inputs[key].value = profile[key];
@@ -393,7 +482,16 @@
     var settings = res.settings || {};
     document.getElementById('showFab').checked = settings.showFab !== false;
     savedAnswers = res.savedAnswers || {};
+    var storedAI = res.aiSettings || {};
+    aiSettings = {
+      enabled: storedAI.enabled !== false,
+      provider: storedAI.provider || 'claude',
+      keys: Object.assign({}, storedAI.keys),
+      models: Object.assign({}, DEFAULT_MODELS, storedAI.models),
+      bio: storedAI.bio || '',
+    };
     refreshMeters();
     renderAnswers();
+    renderAI();
   });
 })();

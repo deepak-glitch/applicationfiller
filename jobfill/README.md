@@ -33,6 +33,16 @@ application. The **Answers** tab lists everything remembered; edit an answer
 inline, forget one with ✕, or clear them all. Clearing the field on the page
 also forgets its saved answer.
 
+**AI answers (optional):** the **AI** tab lets you plug in your own API key
+for Claude, ChatGPT, or Gemini. When configured, JobFill sends *open-ended
+questions only* ("Please describe your client-facing experience.") to your
+chosen provider — together with the background summary you write in that tab —
+and fills in the generated answer, marked with a 🤖 toast so you review it.
+AI is **never** used for your name, contact details, or any other profile
+field; those always come from your locally saved profile. Generated answers
+are cached in the Answers tab, so the same question never costs a second API
+call. Up to 5 questions are answered per fill.
+
 The **Settings** tab has the floating-button toggle, **Export / Import**
 (JSON backup of your profile *and* saved answers), and **Clear profile**.
 
@@ -73,7 +83,10 @@ If you enter only a **Full name**, JobFill still fills split First/Last fields
   you want them auto-answered; leaving them empty means JobFill skips them.
 * It does **not** tick consent/certification checkboxes — those are on you.
 * Everything is stored locally in `chrome.storage.local`. Nothing leaves your
-  browser; there's no server and no network call.
+  browser and there are no network calls — **unless** you configure the AI tab,
+  in which case open-ended questions (plus the page title and your background
+  text) are sent directly to the provider you chose, using your own key. API
+  keys stay in local storage and are excluded from profile exports.
 * Some multi-step Workday flows load fields as you advance — click Autofill
   again on each step.
 * Native inputs, textareas, `<select>` dropdowns, radio groups, and custom

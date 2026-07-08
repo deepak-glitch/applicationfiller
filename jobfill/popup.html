@@ -27,6 +27,7 @@
   <nav class="tabs" role="tablist">
     <button id="tabProfile" class="tabs__tab tabs__tab--active" role="tab" aria-selected="true" type="button">Profile</button>
     <button id="tabAnswers" class="tabs__tab" role="tab" aria-selected="false" type="button">Answers <span id="answersBadge" class="tabs__count" hidden></span></button>
+    <button id="tabAI" class="tabs__tab" role="tab" aria-selected="false" type="button">AI</button>
     <button id="tabSettings" class="tabs__tab" role="tab" aria-selected="false" type="button">Settings</button>
   </nav>
 
@@ -43,6 +44,55 @@
         Nothing saved yet.<br>Answer a custom question on any application and it'll show up here.
       </div>
       <button id="clearAnswersBtn" class="btn btn--danger btn--block" type="button" hidden>Clear all answers</button>
+    </div>
+  </section>
+
+  <section id="panelAI" class="panel" role="tabpanel" hidden>
+    <div class="settings">
+      <p class="answers__intro">AI writes answers to <em>open-ended questions only</em> — like “Describe your client-facing experience.” Your name, contact details and other profile fields are <strong>never</strong> sent to or filled by AI.</p>
+
+      <div class="card">
+        <label class="toggle">
+          <input type="checkbox" id="aiEnabled" checked />
+          <span class="toggle__slider" aria-hidden="true"></span>
+          <span class="toggle__label">Answer open questions with AI</span>
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="card__title">Provider</div>
+        <div id="providerSeg" class="seg" role="radiogroup">
+          <button type="button" class="seg__btn" data-provider="claude">Claude</button>
+          <button type="button" class="seg__btn" data-provider="openai">ChatGPT</button>
+          <button type="button" class="seg__btn" data-provider="gemini">Gemini</button>
+        </div>
+
+        <div class="field" style="margin-top:10px">
+          <label for="aiKey">API key</label>
+          <div class="keyrow">
+            <input id="aiKey" type="password" placeholder="Paste your API key" autocomplete="off" />
+            <button id="showKey" class="btn btn--ghost btn--sm" type="button" title="Show / hide">👁</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="aiModel">Model</label>
+          <input id="aiModel" type="text" autocomplete="off" />
+        </div>
+
+        <div class="btnrow">
+          <button id="testAI" class="btn btn--ghost" type="button">Test connection</button>
+        </div>
+        <div id="aiTestResult" class="fillresult" style="text-align:left"></div>
+      </div>
+
+      <div class="card">
+        <div class="card__title">Your background</div>
+        <textarea id="aiBio" class="bio" rows="6" placeholder="Paste a short summary of your experience, skills and achievements. The AI uses this to write answers that sound like you — the more specific, the better."></textarea>
+        <p class="hint">Sent to your chosen AI provider together with the question and the page title — nothing else.</p>
+      </div>
+
+      <p class="privacy">🔑 Your key and background are stored locally and used only to call your chosen provider directly. Keys are never exported.</p>
     </div>
   </section>
 

@@ -3,8 +3,9 @@
 Chrome extension (Manifest V3) that autofills job applications. All extension
 code lives in `jobfill/` — load it unpacked from `chrome://extensions`.
 
-Work directly on `main` — do not create feature branches (owner's standing
-instruction).
+Branches: `main` holds v1 (stable). v2 (AI answers) is developed on the `v2`
+branch — the owner asked for v2 work to happen there. Don't create other
+branches.
 
 ## Architecture
 
@@ -42,11 +43,25 @@ and note the floating button appears on DOMContentLoaded, i.e. async).
 
 ## Roadmap
 
-### v2 — auto-attach company-specific resumes (NOT STARTED — begin only when
-the owner says "let's start working on v2")
+### v2 — AI answers for open-ended questions (IN PROGRESS on branch `v2`)
+
+Open-ended questions ("Please describe your client-facing experience.") are
+answered by the user's own AI provider — Claude / OpenAI / Gemini, keyed in the
+popup's AI tab. STRICT scope rule from the owner: AI is used ONLY for
+open-ended questions, never for name/contact/profile fields (those are always
+schema-filled). Implementation: `content.js` collects empty, schema-unmatched,
+open-looking questions (textarea, or 5+ word question with essay hints) after
+the profile/saved-answer/combobox passes, capped at 5 per fill; the background
+worker holds the API key and makes the provider call; successful answers are
+cached into `savedAnswers` so repeats are free. Storage key: `aiSettings`
+(`{ enabled, provider, keys: {claude, openai, gemini}, models, bio }`) — keys
+are never exported.
+
+### v3 — auto-attach company-specific resumes (NOT STARTED — begin only when
+the owner says "let's start working on v3")
 
 The owner downloads tailored resumes from a website and saves them in a folder
-on their system. **Each resume filename starts with the company name.** v2
+on their system. **Each resume filename starts with the company name.** v3
 should:
 
 1. Detect the company from the job application page (hostname, page title,

@@ -521,6 +521,93 @@
   }
 
   // ---------------------------------------------------------------------------
+  // AI answers for open-ended questions
+  //
+  // STRICTLY for questions the schema does NOT match — the profile always fills
+  // name/email/etc. AI is only consulted for empty, open-ended prose questions
+  // ("Please describe your client-facing experience.") that also have no saved
+  // answer. The API call happens in the background worker (the key never
+  // reaches page context); successful answers are stored in savedAnswers so
+  // the same question is free next time. Capped per fill to control cost.
+  // ---------------------------------------------------------------------------
+
+  var MAX_AI_PER_FILL = 5;
+  var AI_HINT = new RegExp(
+    '\\b(describe|why|what|how|tell (us|me)|explain|share|experience|' +
+    'interested|interest|motivat\\w*|cover letter|anything else|' +
+    'additional information|comments?|question)\\b'
+  );
+
+  function isOpenQuestion(el, qkey) {
+    var words = qkey.split(' ').length;
+    if (el.tagName.toLowerCase() === 'textarea') {
+      return words >= 3 || AI_HINT.test(qkey);
+    }
+    // Plain text inputs must look clearly essay-like to qualify.
+    return words >= 5 && AI_HINT.test(qkey);
+  }
+
+  function collectAICandidates() {
+    var out = [];
+    document.querySelectorAll('textarea, input[type=text], input:not([type])')
+      .forEach(function (el) {
+        if (!isFillable(el)) return;
+        if (el.value && el.value.trim() !== '') return;          // already answered
+        if (bestField(labelSignals(el)).score >= MATCH_THRESHOLD) return; // profile field — never AI
+        var qkey = questionTextFor(el);
+        if (!qkey) return;
+        if (savedAnswers[qkey] != null) return;                   // saved answer already covers it
+        if (!isOpenQuestion(el, qkey)) return;
+        out.push({ el: el, qkey: qkey });
+      });
+    return out;
+  }
+
+  function aiAnswer(question) {
+    return new Promise(function (resolve) {
+      try {
+        chrome.runtime.sendMessage({
+          type: 'AI_ANSWER',
+          question: question,
+          pageTitle: document.title,
+          host: location.host,
+        }, function (resp) {
+          if (chrome.runtime.lastError || !resp || !resp.ok) return resolve(null);
+          resolve(resp.answer || null);
+        });
+      } catch (e) { resolve(null); }
+    });
+  }
+
+  function fillWithAI() {
+    return new Promise(function (resolve) {
+      chrome.storage.local.get('aiSettings', function (res) {
+        var ai = (res && res.aiSettings) || {};
+        var key = ai.keys && ai.keys[ai.provider || 'claude'];
+        if (ai.enabled === false || !key) return resolve(0);
+
+        var candidates = collectAICandidates().slice(0, MAX_AI_PER_FILL);
+        var chain = Promise.resolve(0);
+        candidates.forEach(function (c) {
+          chain = chain.then(function (count) {
+            return aiAnswer(c.qkey).then(function (answer) {
+              if (!answer) return count;
+              var ok = fillText(c.el, answer);
+              if (ok) {
+                // Remember it — next time this exact question is free.
+                savedAnswers[c.qkey] = answer;
+                persistAnswers();
+              }
+              return count + (ok ? 1 : 0);
+            });
+          });
+        });
+        chain.then(resolve);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // Fill orchestration
   // ---------------------------------------------------------------------------
 
@@ -578,6 +665,13 @@
         var count = syncCount + comboCount;
         showToast(count);
         try { chrome.runtime.sendMessage({ type: 'FRAME_RESULT', count: count }); } catch (e) { /* ignore */ }
+        // Third pass: AI answers for open-ended questions (only runs when a
+        // provider is configured; reports separately so the user reviews them).
+        fillWithAI().then(function (aiCount) {
+          if (aiCount > 0) {
+            showToast(aiCount, '🤖 AI answered ' + aiCount + ' question' + (aiCount === 1 ? '' : 's') + ' — review before submitting!');
+          }
+        });
       });
     });
   }
@@ -586,10 +680,10 @@
   // Toast
   // ---------------------------------------------------------------------------
 
-  function showToast(count) {
-    var msg = count > 0
+  function showToast(count, customMsg) {
+    var msg = customMsg || (count > 0
       ? '⚡ Filled ' + count + ' field' + (count === 1 ? '' : 's')
-      : 'No new fields matched';
+      : 'No new fields matched');
     var el = document.createElement('div');
     el.className = 'jobfill-toast';
     el.textContent = msg;
