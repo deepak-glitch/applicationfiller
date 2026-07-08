@@ -281,7 +281,7 @@
     provider: 'claude',
     keys: {},
     models: Object.assign({}, DEFAULT_MODELS),
-    bio: '',
+    resume: '',
   };
 
   var aiEnabledEl = document.getElementById('aiEnabled');
@@ -299,6 +299,13 @@
     }, 250);
   }
 
+  function resumeMetaText() {
+    var len = (aiSettings.resume || '').trim().length;
+    if (!len) return '';
+    var words = aiSettings.resume.trim().split(/\s+/).length;
+    return '📄 Resume loaded — ' + words + ' words.';
+  }
+
   function renderAI() {
     aiEnabledEl.checked = aiSettings.enabled !== false;
     segBtns.forEach(function (b) {
@@ -306,7 +313,8 @@
     });
     aiKeyEl.value = aiSettings.keys[aiSettings.provider] || '';
     aiModelEl.value = aiSettings.models[aiSettings.provider] || DEFAULT_MODELS[aiSettings.provider];
-    aiBioEl.value = aiSettings.bio || '';
+    aiBioEl.value = aiSettings.resume || '';
+    document.getElementById('resumeMeta').textContent = resumeMetaText();
   }
 
   segBtns.forEach(function (b) {
@@ -331,8 +339,27 @@
     saveAI();
   });
   aiBioEl.addEventListener('input', function () {
-    aiSettings.bio = aiBioEl.value;
+    aiSettings.resume = aiBioEl.value;
+    document.getElementById('resumeMeta').textContent = resumeMetaText();
     saveAI();
+  });
+
+  // Resume file upload (.txt / .md — for PDFs the user pastes the text).
+  var resumeFile = document.getElementById('resumeFile');
+  document.getElementById('resumeUploadBtn').addEventListener('click', function () {
+    resumeFile.click();
+  });
+  resumeFile.addEventListener('change', function () {
+    var file = resumeFile.files && resumeFile.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      aiSettings.resume = String(reader.result || '');
+      renderAI();
+      saveAI();
+    };
+    reader.readAsText(file);
+    resumeFile.value = '';
   });
 
   document.getElementById('showKey').addEventListener('click', function () {
@@ -488,7 +515,8 @@
       provider: storedAI.provider || 'claude',
       keys: Object.assign({}, storedAI.keys),
       models: Object.assign({}, DEFAULT_MODELS, storedAI.models),
-      bio: storedAI.bio || '',
+      // 'bio' was the pre-resume name for this field — migrate transparently.
+      resume: storedAI.resume || storedAI.bio || '',
     };
     refreshMeters();
     renderAnswers();

@@ -54,8 +54,11 @@ open-looking questions (textarea, or 5+ word question with essay hints) after
 the profile/saved-answer/combobox passes, capped at 5 per fill; the background
 worker holds the API key and makes the provider call; successful answers are
 cached into `savedAnswers` so repeats are free. Storage key: `aiSettings`
-(`{ enabled, provider, keys: {claude, openai, gemini}, models, bio }`) — keys
-are never exported.
+(`{ enabled, provider, keys: {claude, openai, gemini}, models, resume }`;
+`bio` is the legacy name for `resume`, still read as a fallback) — keys are
+never exported. The Anthropic call must send the
+`anthropic-dangerous-direct-browser-access: true` header or the API rejects
+browser-origin requests with a CORS error.
 
 ### v3 — auto-attach company-specific resumes (NOT STARTED — begin only when
 the owner says "let's start working on v3")

@@ -37,15 +37,19 @@ var SYSTEM_PROMPT =
   "not in the candidate's background. If the background lacks details, keep " +
   'claims general but positive.';
 
+var MAX_RESUME_CHARS = 12000; // keep prompts bounded even for long resumes
+
 function buildUserPrompt(msg, ai, profile) {
+  var resume = ((ai.resume || ai.bio || '') + '').trim();
+  if (resume.length > MAX_RESUME_CHARS) resume = resume.slice(0, MAX_RESUME_CHARS) + '\n[truncated]';
   var lines = [
     'Question from a job application:',
     '"""' + msg.question + '"""',
     '',
     'Application page: ' + (msg.pageTitle || '(unknown)') + ' (' + (msg.host || '') + ')',
     '',
-    "Candidate's background:",
-    (ai.bio && ai.bio.trim()) || '(none provided)',
+    "Candidate's resume / background:",
+    resume || '(none provided)',
   ];
   if (profile && (profile.currentTitle || profile.currentCompany)) {
     lines.push('');
@@ -62,6 +66,9 @@ async function callClaude(key, model, system, user) {
       'content-type': 'application/json',
       'x-api-key': key,
       'anthropic-version': '2023-06-01',
+      // Anthropic requires this opt-in for requests originating from a browser
+      // context (extensions included). The key still never leaves the worker.
+      'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
       model: model,

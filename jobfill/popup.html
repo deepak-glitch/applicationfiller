@@ -87,8 +87,13 @@
       </div>
 
       <div class="card">
-        <div class="card__title">Your background</div>
-        <textarea id="aiBio" class="bio" rows="6" placeholder="Paste a short summary of your experience, skills and achievements. The AI uses this to write answers that sound like you — the more specific, the better."></textarea>
+        <div class="card__title">Your resume</div>
+        <div class="btnrow" style="margin-bottom:8px">
+          <button id="resumeUploadBtn" class="btn btn--ghost" type="button">⬆ Upload resume (.txt / .md)</button>
+          <input id="resumeFile" type="file" accept=".txt,.md,text/plain,text/markdown" hidden />
+        </div>
+        <textarea id="aiBio" class="bio" rows="8" placeholder="Paste your resume text here (or upload a .txt/.md file above). The AI answers questions using what's written here — the more complete, the better. Using a PDF resume? Open it, select all, copy, and paste here."></textarea>
+        <div id="resumeMeta" class="hint" style="margin-top:6px"></div>
         <p class="hint">Sent to your chosen AI provider together with the question and the page title — nothing else.</p>
       </div>
 

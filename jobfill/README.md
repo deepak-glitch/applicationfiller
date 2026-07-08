@@ -36,8 +36,10 @@ also forgets its saved answer.
 **AI answers (optional):** the **AI** tab lets you plug in your own API key
 for Claude, ChatGPT, or Gemini. When configured, JobFill sends *open-ended
 questions only* ("Please describe your client-facing experience.") to your
-chosen provider — together with the background summary you write in that tab —
-and fills in the generated answer, marked with a 🤖 toast so you review it.
+chosen provider — together with your resume, which you paste or upload
+(.txt/.md) in that tab — and fills in the generated answer, marked with a 🤖
+toast so you review it. Answers are written from your actual resume content,
+so keep it complete and up to date.
 AI is **never** used for your name, contact details, or any other profile
 field; those always come from your locally saved profile. Generated answers
 are cached in the Answers tab, so the same question never costs a second API
