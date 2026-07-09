@@ -210,6 +210,11 @@ body {
 .panel { overflow-y: auto; flex: 1 1 auto; background: var(--panel); }
 
 /* ------------------------------------------------------------- form/tab1 */
+.importbar { padding: 10px 12px 0; }
+.importbar .btn { width: 100%; }
+.importstatus { text-align: center; min-height: 14px; margin-top: 6px; }
+.importstatus--ok { color: var(--ok); font-weight: 600; }
+
 .form { padding: 10px 12px 14px; }
 
 .group {

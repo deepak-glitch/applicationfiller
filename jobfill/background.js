@@ -59,7 +59,17 @@ function buildUserPrompt(msg, ai, profile) {
   return lines.join('\n');
 }
 
-async function callClaude(key, model, system, user) {
+// Each provider call takes optional opts: { maxTokens, doc: { data, mime } }.
+// `doc` attaches a base64 file (PDF) so the model can read a resume directly.
+
+async function callClaude(key, model, system, user, opts) {
+  opts = opts || {};
+  var content = opts.doc
+    ? [
+        { type: 'document', source: { type: 'base64', media_type: opts.doc.mime, data: opts.doc.data } },
+        { type: 'text', text: user },
+      ]
+    : user;
   var r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -72,9 +82,9 @@ async function callClaude(key, model, system, user) {
     },
     body: JSON.stringify({
       model: model,
-      max_tokens: 1024,
+      max_tokens: opts.maxTokens || 1024,
       system: system,
-      messages: [{ role: 'user', content: user }],
+      messages: [{ role: 'user', content: content }],
     }),
   });
   var data = await r.json();
@@ -84,7 +94,14 @@ async function callClaude(key, model, system, user) {
   return text.trim();
 }
 
-async function callOpenAI(key, model, system, user) {
+async function callOpenAI(key, model, system, user, opts) {
+  opts = opts || {};
+  var userContent = opts.doc
+    ? [
+        { type: 'file', file: { filename: 'resume.pdf', file_data: 'data:' + opts.doc.mime + ';base64,' + opts.doc.data } },
+        { type: 'text', text: user },
+      ]
+    : user;
   var r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -93,10 +110,10 @@ async function callOpenAI(key, model, system, user) {
     },
     body: JSON.stringify({
       model: model,
-      max_completion_tokens: 1024,
+      max_completion_tokens: opts.maxTokens || 1024,
       messages: [
         { role: 'system', content: system },
-        { role: 'user', content: user },
+        { role: 'user', content: userContent },
       ],
     }),
   });
@@ -106,7 +123,11 @@ async function callOpenAI(key, model, system, user) {
   return ((choice && choice.message && choice.message.content) || '').trim();
 }
 
-async function callGemini(key, model, system, user) {
+async function callGemini(key, model, system, user, opts) {
+  opts = opts || {};
+  var parts = opts.doc
+    ? [{ inline_data: { mime_type: opts.doc.mime, data: opts.doc.data } }, { text: user }]
+    : [{ text: user }];
   var r = await fetch(
     'https://generativelanguage.googleapis.com/v1beta/models/' +
       encodeURIComponent(model) + ':generateContent',
@@ -118,16 +139,16 @@ async function callGemini(key, model, system, user) {
       },
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: system }] },
-        contents: [{ role: 'user', parts: [{ text: user }] }],
-        generationConfig: { maxOutputTokens: 1024 },
+        contents: [{ role: 'user', parts: parts }],
+        generationConfig: { maxOutputTokens: opts.maxTokens || 1024 },
       }),
     }
   );
   var data = await r.json();
   if (!r.ok) throw new Error((data.error && data.error.message) || ('HTTP ' + r.status));
   var cand = data.candidates && data.candidates[0];
-  var parts = (cand && cand.content && cand.content.parts) || [];
-  return parts.map(function (p) { return p.text || ''; }).join('').trim();
+  var respParts = (cand && cand.content && cand.content.parts) || [];
+  return respParts.map(function (p) { return p.text || ''; }).join('').trim();
 }
 
 var PROVIDERS = { claude: callClaude, openai: callOpenAI, gemini: callGemini };
@@ -147,6 +168,49 @@ async function generateAnswer(msg, ai, profile) {
   var answer = await cfg.call(cfg.key, cfg.model, SYSTEM_PROMPT, buildUserPrompt(msg, ai, profile));
   if (!answer) throw new Error('Empty answer from ' + cfg.provider);
   return answer;
+}
+
+// ---------------------------------------------------------------------------
+// Resume → profile extraction
+// ---------------------------------------------------------------------------
+
+var EXTRACT_SYSTEM =
+  'You extract structured candidate data from resumes. ' +
+  'Reply with ONLY a valid JSON object - no markdown fences, no commentary.';
+
+var EXTRACT_PROMPT =
+  'Read the resume and produce a JSON object with exactly these keys, ' +
+  'omitting any key you cannot find a value for:\n' +
+  '"firstName","lastName","fullName","preferredName","email","phone",' +
+  '"address","addressLine2","city","state","zip","country",' +
+  '"linkedin","github","portfolio","twitter",' +
+  '"currentCompany","currentTitle","resumeText"\n' +
+  'Rules: copy the phone number as written; linkedin/github/portfolio must be ' +
+  'full URLs; currentCompany and currentTitle come from the most recent ' +
+  'position; resumeText is the COMPLETE resume converted to plain text, ' +
+  'preserving section order and all bullet points.';
+
+function parseJSONLoose(s) {
+  s = String(s).trim();
+  var start = s.indexOf('{');
+  var end = s.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) throw new Error('Model did not return JSON');
+  return JSON.parse(s.slice(start, end + 1));
+}
+
+async function extractProfile(msg, ai) {
+  var cfg = aiConfig(ai);
+  if (!cfg.key) throw new Error('No API key configured — add one in the AI tab');
+  if (!cfg.call) throw new Error('Unknown provider: ' + cfg.provider);
+  var raw;
+  if (msg.text != null) {
+    raw = await cfg.call(cfg.key, cfg.model, EXTRACT_SYSTEM,
+      EXTRACT_PROMPT + '\n\nRESUME:\n' + msg.text, { maxTokens: 8192 });
+  } else {
+    raw = await cfg.call(cfg.key, cfg.model, EXTRACT_SYSTEM, EXTRACT_PROMPT,
+      { maxTokens: 8192, doc: { data: msg.data, mime: msg.mime || 'application/pdf' } });
+  }
+  return parseJSONLoose(raw);
 }
 
 var pending = null; // { tabId, total, respond }
@@ -185,6 +249,18 @@ chrome.runtime.onMessage.addListener(function (msg, sender, sendResponse) {
     chrome.storage.local.get(['aiSettings', 'profile'], function (res) {
       generateAnswer(msg, res.aiSettings || {}, res.profile || {})
         .then(function (answer) { sendResponse({ ok: true, answer: answer }); })
+        .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
+    });
+    return true; // async response
+  }
+
+  if (msg.type === 'AI_EXTRACT') {
+    chrome.storage.local.get('aiSettings', function (res) {
+      // Extraction is an explicit user action — allowed even when the
+      // answer-during-fill toggle is off.
+      var ai = Object.assign({}, res.aiSettings || {}, { enabled: true });
+      extractProfile(msg, ai)
+        .then(function (data) { sendResponse({ ok: true, data: data }); })
         .catch(function (e) { sendResponse({ ok: false, error: String((e && e.message) || e) }); });
     });
     return true; // async response

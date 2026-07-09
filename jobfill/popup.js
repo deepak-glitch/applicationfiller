@@ -387,6 +387,85 @@
     });
   });
 
+  // --- Fill everything from a resume file --------------------------------------
+
+  var importFileEl = document.getElementById('resumeImportFile');
+  var importBtn = document.getElementById('resumeImportBtn');
+  var importStatus = document.getElementById('importStatus');
+
+  function setImportStatus(text, ok) {
+    importStatus.className = 'hint importstatus' + (ok ? ' importstatus--ok' : '');
+    importStatus.textContent = text;
+  }
+
+  importBtn.addEventListener('click', function () { importFileEl.click(); });
+
+  importFileEl.addEventListener('change', function () {
+    var file = importFileEl.files && importFileEl.files[0];
+    importFileEl.value = '';
+    if (!file) return;
+
+    var name = file.name.toLowerCase();
+    if (/\.(doc|docx)$/.test(name)) {
+      setImportStatus('Word files can’t be read directly — save it as PDF (File → Save As → PDF) and upload that.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setImportStatus('File is too large (max 10 MB).');
+      return;
+    }
+    var provider = aiSettings.provider || 'claude';
+    if (!aiSettings.keys[provider]) {
+      setImportStatus('Add an API key in the AI tab first — the AI reads your resume to fill the fields.');
+      return;
+    }
+
+    var isPdf = /\.pdf$/.test(name) || file.type === 'application/pdf';
+    importBtn.disabled = true;
+    setImportStatus('Reading your resume with ' + provider + '…');
+
+    var reader = new FileReader();
+    reader.onload = function () {
+      var msg;
+      if (isPdf) {
+        var b64 = String(reader.result).split(',')[1] || '';
+        msg = { type: 'AI_EXTRACT', data: b64, mime: 'application/pdf' };
+      } else {
+        msg = { type: 'AI_EXTRACT', text: String(reader.result) };
+      }
+      chrome.runtime.sendMessage(msg, function (resp) {
+        importBtn.disabled = false;
+        if (chrome.runtime.lastError || !resp) {
+          return setImportStatus('Could not reach the extension worker.');
+        }
+        if (!resp.ok) return setImportStatus('✗ ' + (resp.error || 'Extraction failed'));
+
+        var data = resp.data || {};
+        var filled = 0;
+        Object.keys(inputs).forEach(function (key) {
+          var v = data[key];
+          if (v == null || String(v).trim() === '') return;
+          if (inputs[key].value.trim() !== '') return; // never clobber user edits
+          inputs[key].value = String(v).trim();
+          filled++;
+        });
+        if (data.resumeText && String(data.resumeText).trim()) {
+          aiSettings.resume = String(data.resumeText).trim();
+          chrome.storage.local.set({ aiSettings: aiSettings });
+          renderAI();
+        }
+        saveNow();
+        refreshMeters();
+        setImportStatus(
+          '✓ Filled ' + filled + ' field' + (filled === 1 ? '' : 's') +
+          (data.resumeText ? ' + loaded resume into the AI tab.' : '.') +
+          ' Review below!', true);
+      });
+    };
+    if (isPdf) reader.readAsDataURL(file);
+    else reader.readAsText(file);
+  });
+
   // --- Settings ---------------------------------------------------------------
 
   document.getElementById('showFab').addEventListener('change', function (e) {

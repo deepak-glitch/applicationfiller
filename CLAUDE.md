@@ -53,7 +53,11 @@ schema-filled). Implementation: `content.js` collects empty, schema-unmatched,
 open-looking questions (textarea, or 5+ word question with essay hints) after
 the profile/saved-answer/combobox passes, capped at 5 per fill; the background
 worker holds the API key and makes the provider call; successful answers are
-cached into `savedAnswers` so repeats are free. Storage key: `aiSettings`
+cached into `savedAnswers` so repeats are free. The popup's Profile tab also
+has "Fill everything from my resume": upload .pdf/.txt → background `AI_EXTRACT`
+sends the file (PDF as a base64 document/file/inline_data block per provider)
+with a JSON-extraction prompt → popup fills empty profile fields + stores
+`resumeText` into `aiSettings.resume`. Storage key: `aiSettings`
 (`{ enabled, provider, keys: {claude, openai, gemini}, models, resume }`;
 `bio` is the legacy name for `resume`, still read as a fallback) — keys are
 never exported. The Anthropic call must send the

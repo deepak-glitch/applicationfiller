@@ -32,6 +32,11 @@
   </nav>
 
   <section id="panelProfile" class="panel" role="tabpanel">
+    <div class="importbar">
+      <button id="resumeImportBtn" class="btn btn--ghost" type="button">📄 Fill everything from my resume (.pdf / .txt)</button>
+      <input id="resumeImportFile" type="file" accept=".pdf,.txt,.md,application/pdf,text/plain,text/markdown" hidden />
+      <div id="importStatus" class="hint importstatus" aria-live="polite"></div>
+    </div>
     <main id="form" class="form"><!-- built by popup.js from fields.js --></main>
   </section>
 

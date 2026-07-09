@@ -19,6 +19,11 @@ Works in any Chromium browser — Chrome, Edge, Brave, Arc.
 
 1. Click the ⚡ icon → fill in your profile once on the **Profile** tab. It
    autosaves as you type, and the header bar shows how complete your profile is.
+   Fastest way: **📄 Fill everything from my resume** at the top of the Profile
+   tab — upload your resume (.pdf or .txt) and your AI provider extracts your
+   name, contact details, links, address and current role into the right
+   fields, and loads the resume text into the AI tab in one go (needs an API
+   key in the AI tab; only empty fields are filled, and you review everything).
 2. On a job application page, either:
    * click **Fill current page** in the popup, or
    * click the floating **⚡ Autofill** button (bottom-right of the page — drag
